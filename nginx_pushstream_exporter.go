@@ -10,7 +10,6 @@ import (
 	"github.com/tkliner/nginx_push_stream_exporter/pushstream"
 	"reflect"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -162,7 +161,7 @@ func (e *Exporter) scrape(ch chan<- prometheus.Metric) (up float64) {
 	jsonError := json.NewDecoder(body).Decode(&ps)
 
 	if jsonError != nil {
-		log.Errorf("Unexpected error while reading JSON: %v", err)
+		log.Errorf("Unexpected error while reading JSON: %v", jsonError)
 		return 0
 	}
 
@@ -173,10 +172,9 @@ func (e *Exporter) scrape(ch chan<- prometheus.Metric) (up float64) {
 			valueField := v.Field(i)
 			typeField := v.Type().Field(i)
 			switch valueField.Interface().(type) {
-			case string:
+			case int64:
 				if key == typeField.Tag.Get("json") {
-					channels, _ := strconv.ParseFloat(valueField.String(), 64)
-					ch <- prometheus.MustNewConstMetric(val, prometheus.GaugeValue, channels, "all")
+					ch <- prometheus.MustNewConstMetric(val, prometheus.GaugeValue, float64(valueField.Int()), "all")
 				}
 			case []*pushstream.Channel:
 				for _, info := range ps.Infos {
@@ -186,8 +184,7 @@ func (e *Exporter) scrape(ch chan<- prometheus.Metric) (up float64) {
 						valueInfoField := infoValue.Field(e)
 						typeInfoField := infoValue.Type().Field(e)
 						if key == typeInfoField.Tag.Get("json") {
-							infoData, _ := strconv.ParseFloat(valueInfoField.String(), 64)
-							ch <- prometheus.MustNewConstMetric(val, prometheus.GaugeValue, infoData, info.Channel)
+							ch <- prometheus.MustNewConstMetric(val, prometheus.GaugeValue, float64(valueInfoField.Int()), info.Channel)
 						}
 					}
 
