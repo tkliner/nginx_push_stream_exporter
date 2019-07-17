@@ -210,7 +210,9 @@ func (e *Exporter) scrape(ch chan<- prometheus.Metric) (up float64) {
 		}
 	}
 
-	ch <- prometheus.MustNewConstMetric(e.pushStreamMetrics["subscribers_total"], prometheus.GaugeValue, float64(subscribersTotal), "all")
+	if val, ok := e.pushStreamMetrics["subscribers_total"]; ok {
+		ch <- prometheus.MustNewConstMetric(val, prometheus.GaugeValue, float64(subscribersTotal), "all")
+	}
 
 	return 1
 }
