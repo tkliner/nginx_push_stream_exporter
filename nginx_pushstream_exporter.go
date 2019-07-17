@@ -4,12 +4,13 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/tkliner/nginx_push_stream_exporter/pushstream"
 	"io"
 	"net/http"
 	"net/url"
-	"github.com/tkliner/nginx_push_stream_exporter/pushstream"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -52,9 +53,10 @@ func (m metrics) String() string {
 var (
 	pushStreamMetrics = metrics{
 		"channels":           newPushStreamMetrics("channels", "Current number of existing channels on this server.", nil),
-		"subscribers":        newPushStreamMetrics("subscribers", "Current number of existing channels on this server.", nil),
+		"subscribers":        newPushStreamMetrics("subscribers", "Current number of connected subscribers on channels on this server.", nil),
 		"published_messages": newPushStreamMetrics("published_messages", "Current number of existing channels on this server.", nil),
 		"stored_messages":    newPushStreamMetrics("stored_messages", "Current number of existing channels on this server.", nil),
+		"subscribers_total":  newPushStreamMetrics("subscribers_total", "Total current number of connected subscribers on this server.", nil),
 	}
 
 	nginxUp = prometheus.NewDesc(prometheus.BuildFQName(namespace, "", "up"), "Was the last scrape of nginx successful.", nil, nil)
@@ -147,6 +149,8 @@ func fetchHTTP(uri string, timeout time.Duration) func() (io.ReadCloser, error) 
 }
 
 func (e *Exporter) scrape(ch chan<- prometheus.Metric) (up float64) {
+	var subscribersTotal int64
+
 	e.totalScrapes.Inc()
 
 	body, err := e.fetch()
@@ -186,12 +190,27 @@ func (e *Exporter) scrape(ch chan<- prometheus.Metric) (up float64) {
 						if key == typeInfoField.Tag.Get("json") {
 							ch <- prometheus.MustNewConstMetric(val, prometheus.GaugeValue, float64(valueInfoField.Int()), info.Channel)
 						}
-					}
 
+						if key == "subscribers_total" && typeInfoField.Tag.Get("json") == "subscribers" {
+							switch valueInfoField.Interface().(type) {
+							case string:
+								if n, err := strconv.Atoi(valueInfoField.String()); err == nil {
+									subscribersTotal += int64(n)
+								} else {
+									fmt.Println(v, "is not an integer.")
+									subscribersTotal += 0
+								}
+							case int64:
+								subscribersTotal += valueInfoField.Int()
+							}
+						}
+					}
 				}
 			}
 		}
 	}
+
+	ch <- prometheus.MustNewConstMetric(e.pushStreamMetrics["subscribers_total"], prometheus.GaugeValue, float64(subscribersTotal), "all")
 
 	return 1
 }
